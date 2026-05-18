@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino IR Master - Kuis Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;700&display=swap');
+        
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #0f172a;
+            color: white;
+            overflow-x: hidden;
+        }
+        .font-pixel { font-family: 'Press Start 2P', cursive; }
+        
+        /* Custom Animations */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        
+        @keyframes pop {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop { animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.4s ease-in-out; }
+
+        /* Game Elements */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.1);
+        }
+        
+        .btn-game {
+            transition: all 0.2s;
+            background: linear-gradient(135deg, #0ea5e9, #2563eb);
+            border-bottom: 4px solid #1e3a8a;
+        }
+        .btn-game:active {
+            transform: translateY(4px);
+            border-bottom: 0px solid #1e3a8a;
+        }
+        
+        .answer-btn {
+            transition: all 0.2s;
+            background: #1e293b;
+            border: 2px solid #334155;
+        }
+        .answer-btn:hover {
+            border-color: #38bdf8;
+            background: #0f172a;
+        }
+        .answer-btn.correct {
+            background: #166534;
+            border-color: #22c55e;
+            color: white;
+        }
+        .answer-btn.wrong {
+            background: #991b1b;
+            border-color: #ef4444;
+            color: white;
+        }
+
+        .mission-node {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 3px solid #334155;
+            background: #1e293b;
+            color: #64748b;
+        }
+        .mission-node.unlocked {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.2);
+            color: #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
+        }
+        .mission-node.completed {
+            border-color: #22c55e;
+            background: #166534;
+            color: white;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.5);
+        }
+        
+        .xp-popup {
+            position: absolute;
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 1.5rem;
+            pointer-events: none;
+            animation: floatUp 1s forwards;
+            z-index: 50;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-50px); }
+        }
+
+        .picture-box {
+            font-size: 5rem;
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+
+    <!-- Top HUD (Heads Up Display) -->
+    <div id="hud" class="hidden w-full max-w-4xl flex justify-between items-center p-4 glass-panel rounded-xl absolute top-4 z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-xl font-bold border-2 border-blue-300">
+                <i class="fas fa-user-astronaut"></i>
+            </div>
+            <div>
+                <div id="player-name-display" class="font-bold text-xl text-blue-300">Player</div>
+                <div id="player-rank" class="text-xs text-gray-400 font-pixel uppercase">NOVICE</div>
+            </div>
+        </div>
+        <div class="text-right">
+            <div class="text-3xl font-bold text-yellow-400 drop-shadow-md">
+                <i class="fas fa-star mr-1 text-xl"></i><span id="xp-display">0</span> XP
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CONTAINER -->
+    <div class="w-full max-w-2xl relative mt-16 md:mt-0">
+        
+        <!-- SCREEN 1: WELCOME -->
+        <div id="screen-welcome" class="glass-panel rounded-3xl p-8 text-center animate-pop">
+            <div class="text-6xl text-blue-400 mb-6 animate-float">
+                <i class="fas fa-microchip"></i>
+            </div>
+            <h1 class="font-pixel text-2xl md:text-3xl text-white mb-2 leading-relaxed text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+                ARDUINO IR MASTER
+            </h1>
+            <p class="text-gray-300 mb-8 text-lg">Uji pengetahuanmu tentang Infrared, IR Receiver, dan Arduino berdasarkan modul WOKWI!</p>
+            <button onclick="showScreen('screen-name')" class="btn-game w-full py-4 rounded-xl text-xl font-bold text-white uppercase tracking-wider">
+                Mulai Game <i class="fas fa-play ml-2"></i>
+            </button>
+        </div>
+
+        <!-- SCREEN 2: INPUT NAMA -->
+        <div id="screen-name" class="hidden glass-panel rounded-3xl p-8 text-center animate-pop">
+            <h2 class="text-3xl font-bold text-blue-300 mb-6">Identitas Player</h2>
+            <div class="mb-8">
+                <i class="fas fa-id-card text-5xl text-gray-400 mb-4"></i>
+                <input type="text" id="player-name-input" placeholder="Masukkan Nama Kamu..." 
+                       class="w-full bg-slate-800 border-2 border-slate-600 rounded-xl px-4 py-4 text-xl text-center text-white focus:border-blue-500 focus:outline-none transition-colors"
+                       maxlength="15">
+            </div>
+            <button onclick="startGame()" class="btn-game w-full py-4 rounded-xl text-xl font-bold text-white uppercase tracking-wider">
+                Lanjut <i class="fas fa-arrow-right ml-2"></i>
+            </button>
+            <button onclick="showScreen('screen-welcome')" class="mt-4 text-gray-400 hover:text-white transition-colors">
+                Kembali
+            </button>
+        </div>
+
+        <!-- SCREEN 3: MISSION SELECT -->
+        <div id="screen-missions" class="hidden glass-panel rounded-3xl p-6 text-center animate-pop">
+            <h2 class="text-3xl font-bold text-blue-300 mb-2">Pilih Misi</h2>
+            <p class="text-gray-400 mb-6">Selesaikan misi secara berurutan untuk membuka kunci!</p>
+            
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-6 justify-items-center mb-8" id="mission-grid">
+                <!-- Generated by JS -->
+            </div>
+        </div>
+
+        <!-- SCREEN 4: GAMEPLAY -->
+        <div id="screen-game" class="hidden glass-panel rounded-3xl p-6 animate-pop relative">
+            <div class="flex justify-between items-center mb-4 text-sm text-gray-400 font-bold uppercase tracking-wider border-b border-slate-700 pb-2">
+                <div id="mission-title">Misi 1</div>
+                <div>Kuis <span id="question-number" class="text-blue-400">1</span>/5</div>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-800 rounded-full h-2.5 mb-6">
+                <div id="quiz-progress" class="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style="width: 20%"></div>
+            </div>
+
+            <!-- "Gambar" Box -->
+            <div class="w-full bg-slate-900 rounded-2xl py-8 mb-6 flex flex-col items-center justify-center border border-slate-700 relative overflow-hidden">
+                <div class="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+                <div id="question-image" class="picture-box mb-4 z-10 animate-float">
+                    📺
+                </div>
+            </div>
+
+            <h3 id="question-text" class="text-xl md:text-2xl font-bold mb-6 text-center">Pertanyaan akan muncul di sini?</h3>
+            
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Buttons generated by JS -->
+            </div>
+        </div>
+
+        <!-- SCREEN 5: MISSION RESULT -->
+        <div id="screen-result" class="hidden glass-panel rounded-3xl p-8 text-center animate-pop">
+            <div id="result-icon" class="text-6xl mb-4 text-emerald-400 animate-float">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <h2 id="result-title" class="text-3xl font-bold text-white mb-2">Misi Selesai!</h2>
+            <p id="result-message" class="text-gray-300 mb-6 text-lg">Kamu berhasil menyelesaikan Misi 1.</p>
+            
+            <div class="bg-slate-800 p-4 rounded-xl mb-8 inline-block border border-slate-700">
+                <div class="text-sm text-gray-400 uppercase font-bold mb-1">XP Diperoleh</div>
+                <div class="text-4xl font-bold text-yellow-400">+<span id="earned-xp">0</span></div>
+            </div>
+
+            <button onclick="returnToMissions()" class="btn-game w-full py-4 rounded-xl text-xl font-bold text-white uppercase tracking-wider">
+                Lanjut ke Peta Misi
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- GAME DATA: BERDASARKAN PDF MODUL WOKWI ---
+        // 10 Misi x 5 Pertanyaan = 50 Pertanyaan
+        const quizData = [
+            // MISI 1: Dasar Remote IR
+            [
+                { img: "🎮", text: "Alat pengendali jarak jauh yang menggunakan sinar inframerah disebut...", options: ["Remote Infrared", "Remote Bluetooth", "Remote Radio", "Remote Wi-Fi"], answer: "Remote Infrared" },
+                { img: "👀", text: "Apakah sinar infrared dari remote dapat dilihat langsung oleh mata telanjang manusia?", options: ["Tidak, tidak terlihat", "Ya, terlihat merah terang", "Ya, terlihat biru", "Kadang-kadang terlihat"], answer: "Tidak, tidak terlihat" },
+                { img: "🏠", text: "Berikut ini adalah contoh penggunaan remote infrared sehari-hari, KECUALI...", options: ["Kulkas", "Remote TV", "Remote AC", "Remote DVD"], answer: "Kulkas" },
+                { img: "📡", text: "Sinar infrared dari remote akan dibaca oleh sensor khusus yang disebut...", options: ["IR Receiver", "IR Transmitter", "LDR", "Ultrasonik"], answer: "IR Receiver" },
+                { img: "⚡", text: "Fungsi utama remote infrared adalah...", options: ["Mengirim perintah jarak jauh tanpa kabel", "Menghasilkan listrik", "Menyimpan data", "Mengukur suhu ruangan"], answer: "Mengirim perintah jarak jauh tanpa kabel" }
+            ],
+            // MISI 2: IR Receiver
+            [
+                { img: "🔌", text: "IR Receiver adalah sensor elektronik yang berfungsi untuk...", options: ["Menerima sinyal dari remote", "Memancarkan cahaya inframerah", "Menyimpan program Arduino", "Menghidupkan LED otomatis"], answer: "Menerima sinyal dari remote" },
+                { img: "🔢", text: "Setelah menerima sinyal, IR Receiver mengubahnya menjadi data...", options: ["Digital", "Analog", "Suara", "Mekanik"], answer: "Digital" },
+                { img: "📥", text: "Dalam sistem kontrol, IR Receiver digolongkan sebagai perangkat...", options: ["Input", "Output", "Proses", "Storage"], answer: "Input" },
+                { img: "📌", text: "Biasanya, berapakah jumlah pin yang dimiliki oleh komponen IR Receiver?", options: ["3 Pin", "2 Pin", "4 Pin", "5 Pin"], answer: "3 Pin" },
+                { img: "🔌", text: "Pin VCC pada IR Receiver dihubungkan ke tegangan sebesar...", options: ["5V", "3.3V", "9V", "12V"], answer: "5V" }
+            ],
+            // MISI 3: Wiring (Rangkaian)
+            [
+                { img: "➖", text: "Pin GND (Ground) pada IR Receiver dihubungkan ke pin mana pada Arduino?", options: ["GND", "5V", "Pin 2", "Pin 3"], answer: "GND" },
+                { img: "📤", text: "Berdasarkan modul, Pin OUT pada IR Receiver dihubungkan ke Arduino pada...", options: ["Pin 2", "Pin 3", "Pin 4", "GND"], answer: "Pin 2" },
+                { img: "💡", text: "Pin positif (+) pada komponen LED dihubungkan ke Arduino pada...", options: ["Pin 3", "Pin 2", "GND", "5V"], answer: "Pin 3" },
+                { img: "⚡", text: "Komponen apa yang dihubungkan antara LED (-) dan GND untuk membatasi arus?", options: ["Resistor 220 Ohm", "Kapasitor", "Transistor", "Dioda"], answer: "Resistor 220 Ohm" },
+                { img: "💻", text: "Platform simulator online yang digunakan untuk merangkai projek ini adalah...", options: ["WOKWI", "Tinkercad", "Proteus", "Fritzing"], answer: "WOKWI" }
+            ],
+            // MISI 4: Alur Sistem
+            [
+                { img: "🔄", text: "Urutan alur sistem projek yang benar adalah...", options: ["Remote -> Receiver -> Arduino -> LED", "LED -> Arduino -> Receiver -> Remote", "Receiver -> Remote -> Arduino -> LED", "Arduino -> Receiver -> Remote -> LED"], answer: "Remote -> Receiver -> Arduino -> LED" },
+                { img: "🧠", text: "Dalam sistem ini, komponen yang bertugas sebagai 'pemroses data' adalah...", options: ["Arduino", "Remote IR", "IR Receiver", "LED"], answer: "Arduino" },
+                { img: "📤", text: "Dalam sistem ini, perangkat yang berperan sebagai 'Output' adalah...", options: ["LED", "Remote IR", "IR Receiver", "Arduino"], answer: "LED" },
+                { img: "📡", text: "Jika remote ditekan, sinyal apa yang pertama kali dikirimkan?", options: ["Sinyal Cahaya Infrared", "Sinyal Wi-Fi", "Sinyal Bluetooth", "Arus Listrik"], answer: "Sinyal Cahaya Infrared" },
+                { img: "🔗", text: "IR Receiver berperan sebagai penghubung antara ... dan Arduino.", options: ["Remote", "LED", "Resistor", "Kabel Jumper"], answer: "Remote" }
+            ],
+            // MISI 5: Kode Program (Dasar)
+            [
+                { img: "📚", text: "Library apa yang harus dimasukkan (include) untuk menggunakan IR di program ini?", options: ["<IRremote.hpp>", "<Wire.h>", "<Servo.h>", "<LiquidCrystal.h>"], answer: "<IRremote.hpp>" },
+                { img: "🖥️", text: "Perintah 'Serial.begin(9600);' digunakan untuk...", options: ["Mengaktifkan serial monitor", "Mengaktifkan IR receiver", "Menyalakan LED", "Mematikan program"], answer: "Mengaktifkan serial monitor" },
+                { img: "🚦", text: "Untuk mengatur LED sebagai output, perintah yang digunakan adalah...", options: ["pinMode(LED_PIN, OUTPUT);", "pinMode(LED_PIN, INPUT);", "digitalWrite(LED_PIN, OUTPUT);", "Serial.print(OUTPUT);"], answer: "pinMode(LED_PIN, OUTPUT);" },
+                { img: "📻", text: "Pada fungsi setup, perintah untuk menginisiasi dan mengaktifkan IR Receiver adalah...", options: ["IrReceiver.begin(...)", "IR.start()", "receiver.enable()", "analogRead()"], answer: "IrReceiver.begin(...)" },
+                { img: "⏱️", text: "Perintah 'delay(300);' akan memberikan jeda program selama...", options: ["300 milidetik (0.3 detik)", "300 detik", "3 detik", "30 milidetik"], answer: "300 milidetik (0.3 detik)" }
+            ],
+            // MISI 6: Kode Tombol Remote (Decimal)
+            [
+                { img: "🔴", text: "Berdasarkan tabel pada modul, kode desimal untuk tombol 'Power' adalah...", options: ["162", "226", "34", "48"], answer: "162" },
+                { img: "📜", text: "Kode desimal 226 merupakan kode untuk tombol...", options: ["Menu", "Power", "Test", "1"], answer: "Menu" },
+                { img: "✅", text: "Kode desimal 34 merupakan kode untuk tombol...", options: ["Test", "Menu", "1", "Power"], answer: "Test" },
+                { img: "1️⃣", text: "Berdasarkan tabel, kode desimal 48 merupakan sinyal dari tombol...", options: ["Tombol 1", "Tombol Test", "Tombol Power", "Tombol Menu"], answer: "Tombol 1" },
+                { img: "🔢", text: "Dalam program, nilai command tombol '1' juga ditulis dalam format Hexadesimal yaitu...", options: ["0x30", "0x18", "0x162", "0xFF"], answer: "0x30" }
+            ],
+            // MISI 7: Fungsi Tombol Remote
+            [
+                { img: "🌑", text: "Pada tabel fungsi, saat tombol 'Power' ditekan, program akan membuat...", options: ["LED mati", "LED nyala", "LED kedip", "Tampilkan petunjuk"], answer: "LED mati" },
+                { img: "💡", text: "Saat tombol 'Test' ditekan, apa fungsi yang dijalankan pada LED?", options: ["LED nyala", "LED mati", "LED kedip", "Tampilkan petunjuk"], answer: "LED nyala" },
+                { img: "✨", text: "Tombol '1' diatur agar LED melakukan aksi...", options: ["LED kedip", "LED mati", "LED nyala terang", "Menyalakan Serial Monitor"], answer: "LED kedip" },
+                { img: "ℹ️", text: "Fungsi 'Tampilkan petunjuk' diaktifkan menggunakan tombol...", options: ["Menu", "Test", "Power", "1"], answer: "Menu" },
+                { img: "⚙️", text: "Di Visual Studio Code (PlatformIO), library yang diinstall bernama 'IRremote' buatan...", options: ["Armin Joachimsmeyer", "Arduino LLC", "Adafruit", "Wokwi"], answer: "Armin Joachimsmeyer" }
+            ],
+            // MISI 8: Logika Pemrograman
+            [
+                { img: "🔀", text: "Struktur logika yang digunakan untuk mengecek 'Apakah tombol 1 ditekan?' adalah...", options: ["Percabangan if", "Perulangan for", "Perulangan while", "Fungsi delay()"], answer: "Percabangan if" },
+                { img: "📖", text: "Perintah 'if (IrReceiver.decode())' berfungsi untuk...", options: ["Mengecek jika ada data IR yang berhasil dibaca", "Menghidupkan LED", "Menghapus memori Arduino", "Membuat LED berkedip"], answer: "Mengecek jika ada data IR yang berhasil dibaca" },
+                { img: "⏭️", text: "Setelah data selesai diproses, perintah agar Arduino siap menerima sinyal berikutnya adalah...", options: ["IrReceiver.resume();", "IrReceiver.stop();", "delay(1000);", "return 0;"], answer: "IrReceiver.resume();" },
+                { img: "💡", text: "Untuk menyalakan LED (memberi tegangan), perintah yang benar adalah...", options: ["digitalWrite(LED_PIN, HIGH);", "digitalWrite(LED_PIN, LOW);", "analogWrite(LED_PIN, 0);", "pinMode(LED_PIN, HIGH);"], answer: "digitalWrite(LED_PIN, HIGH);" },
+                { img: "🌑", text: "Sedangkan untuk mematikan LED, perintahnya adalah...", options: ["digitalWrite(LED_PIN, LOW);", "digitalWrite(LED_PIN, HIGH);", "delay(0);", "IrReceiver.resume();"], answer: "digitalWrite(LED_PIN, LOW);" }
+            ],
+            // MISI 9: Konsep Informatika
+            [
+                { img: "⌨️", text: "Dalam projek ini, IR Receiver mewakili konsep informatika berupa...", options: ["Input device", "Output device", "Storage device", "Processing unit"], answer: "Input device" },
+                { img: "🖥️", text: "LED dalam projek ini mewakili konsep informatika berupa...", options: ["Output device", "Input device", "Database", "Jaringan komputer"], answer: "Output device" },
+                { img: "📦", text: "Tempat untuk menyimpan data sementara dalam kode program disebut...", options: ["Variabel", "Delay", "Library", "Kabel jumper"], answer: "Variabel" },
+                { img: "🌐", text: "Projek mengontrol LED jarak jauh ini mensimulasikan sistem dasar dari teknologi...", options: ["IoT (Internet of Things)", "AI (Artificial Intelligence)", "VR (Virtual Reality)", "Blockchain"], answer: "IoT (Internet of Things)" },
+                { img: "🤝", text: "Projek ini membuktikan adanya interaksi antara fisik Arduino dan kode program. Ini disebut interaksi...", options: ["Hardware & Software", "Input & Output", "Remote & Receiver", "User & Monitor"], answer: "Hardware & Software" }
+            ],
+            // MISI 10: Ujian Master Arduino
+            [
+                { img: "🌟", text: "Berdasarkan tugas pengembangan, fitur apa yang disarankan untuk Tombol 2?", options: ["LED kedip cepat", "LED kedip lambat", "LED menyala 3 detik", "Sistem mati"], answer: "LED kedip cepat" },
+                { img: "⏳", text: "Jika Tombol 4 diprogram untuk menyala 3 detik lalu mati, maka nilai delay() yang digunakan adalah...", options: ["delay(3000);", "delay(3);", "delay(300);", "delay(30000);"], answer: "delay(3000);" },
+                { img: "🛠️", text: "Jika kamu ingin menambahkan LED kedua di Pin 4, perintah setup awalnya adalah...", options: ["pinMode(4, OUTPUT);", "pinMode(2, OUTPUT);", "digitalWrite(4, HIGH);", "IrReceiver.begin(4);"], answer: "pinMode(4, OUTPUT);" },
+                { img: "🐛", text: "Apa fungsi perintah 'Serial.print' dan 'Serial.println' dalam percabangan pembacaan IR?", options: ["Untuk menampilkan data ke Serial Monitor (Debugging)", "Untuk mengirim sinyal ke Remote", "Untuk mempercepat jalannya program", "Untuk menyalakan LED"], answer: "Untuk menampilkan data ke Serial Monitor (Debugging)" },
+                { img: "🏆", text: "Tujuan utama pembelajaran modul ini adalah agar siswa mampu...", options: ["Membuat program kontrol LED dengan remote IR", "Membuat remote AC sendiri", "Menghafal semua kode hexadesimal", "Membongkar Arduino Uno"], answer: "Membuat program kontrol LED dengan remote IR" }
+            ]
+        ];
+
+        // --- GAME STATE VARIABLES ---
+        let playerName = "";
+        let currentMissionIndex = 0; // 0 to 9
+        let currentQuestionIndex = 0; // 0 to 4
+        let playerXP = 0;
+        let missionUnlocked = [true, false, false, false, false, false, false, false, false, false];
+        let currentOptions = [];
+        let currentEarnedXP = 0;
+        let isAnswering = false;
+
+        // --- AUDIO (Using Web Audio API for simple beeps to avoid external assets) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'correct') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                oscillator.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            } else if (type === 'wrong') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // --- CORE FUNCTIONS ---
+        function showScreen(screenId) {
+            document.querySelectorAll('body > div.max-w-2xl > div').forEach(el => {
+                if(el.id !== 'hud') el.classList.add('hidden');
+            });
+            const screen = document.getElementById(screenId);
+            screen.classList.remove('hidden');
+            
+            // Re-trigger animation
+            screen.classList.remove('animate-pop');
+            void screen.offsetWidth; // trigger reflow
+            screen.classList.add('animate-pop');
+        }
+
+        function startGame() {
+            const input = document.getElementById('player-name-input').value.trim();
+            if(input === "") {
+                // Simple shake effect for validation
+                const nameDiv = document.getElementById('screen-name');
+                nameDiv.classList.remove('animate-shake');
+                void nameDiv.offsetWidth;
+                nameDiv.classList.add('animate-shake');
+                return;
+            }
+            playerName = input;
+            document.getElementById('player-name-display').innerText = playerName;
+            document.getElementById('hud').classList.remove('hidden');
+            renderMissionGrid();
+            showScreen('screen-missions');
+        }
+
+        function updateHUD() {
+            document.getElementById('xp-display').innerText = playerXP;
+            
+            // Rank logic
+            let rank = "NOVICE";
+            if(playerXP >= 200) rank = "MAKER";
+            if(playerXP >= 500) rank = "ENGINEER";
+            if(playerXP >= 800) rank = "MASTER";
+            if(playerXP >= 1000) rank = "LEGEND";
+            document.getElementById('player-rank').innerText = rank;
+        }
+
+        function renderMissionGrid() {
+            const grid = document.getElementById('mission-grid');
+            grid.innerHTML = "";
+            for(let i = 0; i < 10; i++) {
+                const isUnlocked = missionUnlocked[i];
+                const isCompleted = i < 9 && missionUnlocked[i+1]; // basic completion logic
+                
+                let classes = "mission-node";
+                let icon = i + 1;
+                
+                if(isCompleted) {
+                    classes += " completed";
+                    icon = '<i class="fas fa-check"></i>';
+                } else if(isUnlocked) {
+                    classes += " unlocked";
+                } else {
+                    icon = '<i class="fas fa-lock text-sm"></i>';
+                }
+                
+                const node = document.createElement('div');
+                node.className = classes;
+                node.innerHTML = icon;
+                if(isUnlocked) {
+                    node.onclick = () => startMission(i);
+                }
+                grid.appendChild(node);
+            }
+            updateHUD();
+        }
+
+        function startMission(missionIndex) {
+            currentMissionIndex = missionIndex;
+            currentQuestionIndex = 0;
+            currentEarnedXP = 0;
+            isAnswering = false;
+            
+            document.getElementById('mission-title').innerText = `MISI ${currentMissionIndex + 1}`;
+            loadQuestion();
+            showScreen('screen-game');
+        }
+
+        // Fisher-Yates Shuffle Algorithm
+        function shuffleArray(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        function loadQuestion() {
+            isAnswering = false;
+            const q = quizData[currentMissionIndex][currentQuestionIndex];
+            
+            // Update UI Progress
+            document.getElementById('question-number').innerText = currentQuestionIndex + 1;
+            const progress = ((currentQuestionIndex) / 5) * 100;
+            document.getElementById('quiz-progress').style.width = `${progress}%`;
+            
+            // Set Text and Image
+            document.getElementById('question-text').innerText = q.text;
+            document.getElementById('question-image').innerText = q.img;
+            
+            // Trigger float animation on image
+            const imgBox = document.getElementById('question-image');
+            imgBox.classList.remove('animate-float');
+            void imgBox.offsetWidth;
+            imgBox.classList.add('animate-float');
+
+            // Setup Options
+            currentOptions = [...q.options];
+            shuffleArray(currentOptions);
+            
+            const container = document.getElementById('options-container');
+            container.innerHTML = "";
+            
+            currentOptions.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "answer-btn w-full py-4 px-6 rounded-xl text-lg font-bold text-left flex justify-between items-center shadow-lg";
+                btn.innerHTML = `<span>${opt}</span> <i class="fas fa-circle text-slate-600 text-sm option-icon"></i>`;
+                btn.onclick = (e) => handleAnswer(opt, q.answer, btn, e);
+                container.appendChild(btn);
+            });
+        }
+
+        function createFloatingXP(x, y, amount) {
+            const xp = document.createElement('div');
+            xp.className = 'xp-popup';
+            xp.innerText = `+${amount} XP`;
+            xp.style.left = `${x}px`;
+            xp.style.top = `${y}px`;
+            document.body.appendChild(xp);
+            setTimeout(() => xp.remove(), 1000);
+        }
+
+        function handleAnswer(selectedOption, correctAnswer, btnElement, event) {
+            if(isAnswering) return;
+            isAnswering = true;
+            
+            const allBtns = document.querySelectorAll('.answer-btn');
+            
+            if(selectedOption === correctAnswer) {
+                // CORRECT
+                playSound('correct');
+                btnElement.classList.add('correct');
+                btnElement.querySelector('.option-icon').className = "fas fa-check-circle text-white text-lg";
+                
+                const xpGain = 20;
+                playerXP += xpGain;
+                currentEarnedXP += xpGain;
+                updateHUD();
+                
+                // Show floating XP at click position
+                createFloatingXP(event.clientX, event.clientY, xpGain);
+                
+            } else {
+                // WRONG
+                playSound('wrong');
+                btnElement.classList.add('wrong');
+                btnElement.classList.add('animate-shake');
+                btnElement.querySelector('.option-icon').className = "fas fa-times-circle text-white text-lg";
+                
+                // Highlight correct answer
+                allBtns.forEach(b => {
+                    if(b.innerText.trim() === correctAnswer) {
+                        b.classList.add('correct');
+                    }
+                });
+            }
+            
+            // Disable all buttons
+            allBtns.forEach(b => b.style.pointerEvents = 'none');
+            
+            // Next question delay
+            setTimeout(() => {
+                currentQuestionIndex++;
+                if(currentQuestionIndex < 5) {
+                    loadQuestion();
+                } else {
+                    finishMission();
+                }
+            }, 1500);
+        }
+
+        function finishMission() {
+            // Update progress bar to 100%
+            document.getElementById('quiz-progress').style.width = `100%`;
+            
+            setTimeout(() => {
+                document.getElementById('result-title').innerText = `Misi ${currentMissionIndex + 1} Selesai!`;
+                
+                // Success vs Fail flavor text based on XP
+                const msg = document.getElementById('result-message');
+                const icon = document.getElementById('result-icon');
+                if(currentEarnedXP >= 80) {
+                    msg.innerText = "Luar biasa! Pemahamanmu sangat kuat.";
+                    icon.innerHTML = '<i class="fas fa-trophy text-yellow-400"></i>';
+                } else if(currentEarnedXP >= 40) {
+                    msg.innerText = "Kerja bagus! Tapi masih bisa ditingkatkan.";
+                    icon.innerHTML = '<i class="fas fa-star text-blue-400"></i>';
+                } else {
+                    msg.innerText = "Kamu harus belajar lebih giat lagi dari modul!";
+                    icon.innerHTML = '<i class="fas fa-exclamation-triangle text-red-400"></i>';
+                }
+                
+                document.getElementById('earned-xp').innerText = currentEarnedXP;
+                
+                // Unlock next mission
+                if(currentMissionIndex < 9) {
+                    missionUnlocked[currentMissionIndex + 1] = true;
+                }
+                
+                showScreen('screen-result');
+            }, 500);
+        }
+
+        function returnToMissions() {
+            renderMissionGrid();
+            showScreen('screen-missions');
+        }
+
+        // Initialize (Handle Enter key on Name input)
+        document.getElementById('player-name-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') startGame();
+        });
+
+    </script>
+</body>
+</html>
